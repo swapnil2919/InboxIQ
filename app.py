@@ -1,15 +1,20 @@
 import streamlit as st
+import pandas as pd
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 
 st.set_page_config(
-    page_title="Email Dashboard",
+    page_title="MailMind",
     page_icon="📧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ==========================================
-# Session State Initialization
-# ==========================================
+# =========================================================
+# SESSION STATE DEFAULTS
+# =========================================================
 
 defaults = {
     "connected": False,
@@ -20,196 +25,348 @@ defaults = {
     "gemini_key": "",
     "account_sid": "",
     "auth_token": "",
-    "twilio_number": "",
+    "twilio_number": ""
 }
 
 for key, value in defaults.items():
+
     if key not in st.session_state:
+
         st.session_state[key] = value
 
-# ==========================================
-# Sidebar
-# ==========================================
+# =========================================================
+# CUSTOM CSS
+# =========================================================
+
+st.markdown("""
+<style>
+
+.block-container{
+    padding-top:1rem;
+    padding-bottom:1rem;
+}
+
+.metric-card{
+    padding:20px;
+    border-radius:12px;
+    border:1px solid #2d2d2d;
+    background:#111827;
+}
+
+.dashboard-card{
+    padding:20px;
+    border-radius:12px;
+    border:1px solid #2d2d2d;
+    background:#111827;
+    margin-bottom:15px;
+}
+
+.big-title{
+    font-size:42px;
+    font-weight:700;
+}
+
+.small-text{
+    color:#9ca3af;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# SIDEBAR
+# =========================================================
 
 with st.sidebar:
 
-    st.title("📧 Email Dashboard")
+    st.title("📧 MailMind")
 
-    if st.session_state.connected:
-        st.success("Connected")
-    else:
-        st.warning("Not Connected")
-
-    st.divider()
-
-    st.markdown("""
-    ### Navigation
-
-    Use Streamlit Pages:
-
-    ⚙️ Settings
-
-    📥 Inbox
-
-    📊 Analytics
-    """)
-
-    st.divider()
-
-    st.markdown("### Current Status")
-
-    st.metric(
-        "Emails Loaded",
-        len(st.session_state.emails)
+    st.caption(
+        "AI Powered Email Intelligence"
     )
 
-# ==========================================
-# Header
-# ==========================================
+    st.divider()
 
-st.title("📧 Email Dashboard")
+    if st.session_state.connected:
 
-st.caption(
-    "Gmail • Outlook • AI Summary • WhatsApp Notifications"
+        st.success(
+            "🟢 Connected"
+        )
+
+    else:
+
+        st.warning(
+            "🔴 Not Connected"
+        )
+
+    st.divider()
+
+    st.markdown(
+        """
+### Navigation
+
+⚙️ Settings
+
+📥 Inbox
+
+📊 Analytics
+"""
+    )
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.markdown(
+    """
+<div class="big-title">
+📧 MailMind
+</div>
+""",
+    unsafe_allow_html=True
 )
 
-# ==========================================
-# Dashboard Cards
-# ==========================================
+st.caption(
+    "AI Powered Email Dashboard"
+)
 
-col1, col2, col3, col4 = st.columns(4)
+st.divider()
+
+# =========================================================
+# KPIs
+# =========================================================
+
+emails = st.session_state.get(
+    "emails",
+    []
+)
+
+total_emails = len(
+    emails
+)
+
+unique_senders = len(
+    set(
+        [
+            email.get(
+                "sender_name",
+                email.get(
+                    "from",
+                    ""
+                )
+            )
+            for email in emails
+        ]
+    )
+)
+
+attachments = len(
+    [
+        email
+        for email in emails
+        if email.get(
+            "has_attachment",
+            False
+        )
+    ]
+)
+
+col1, col2, col3, col4 = st.columns(
+    4
+)
 
 with col1:
+
     st.metric(
-        "Connection",
-        "Active" if st.session_state.connected else "Offline"
+        "📧 Emails",
+        total_emails
     )
 
 with col2:
+
     st.metric(
-        "Inbox Emails",
-        len(st.session_state.emails)
+        "👤 Senders",
+        unique_senders
     )
 
 with col3:
+
     st.metric(
-        "AI Summary",
+        "📎 Attachments",
+        attachments
+    )
+
+with col4:
+
+    st.metric(
+        "🤖 AI",
         "Enabled"
         if st.session_state.gemini_key
         else "Disabled"
     )
 
-with col4:
-    st.metric(
-        "WhatsApp",
-        "Enabled"
-        if st.session_state.account_sid
-        else "Disabled"
-    )
-
 st.divider()
 
-# ==========================================
-# Main Content
-# ==========================================
+# =========================================================
+# DASHBOARD
+# =========================================================
 
-if not st.session_state.connected:
+left_col, right_col = st.columns(
+    [2, 1]
+)
 
-    st.info(
-        """
-        Welcome to Email Dashboard.
+# =========================================================
+# LEFT SIDE
+# =========================================================
 
-        To get started:
+with left_col:
 
-        1. Open **Settings**
-        2. Enter your Email
-        3. Enter App Password
-        4. Enter IMAP Server
-        5. Click Connect
-        """
+    st.subheader(
+        "📨 Recent Emails"
     )
 
-    st.code("""
-Gmail IMAP:
-imap.gmail.com
+    if len(emails) == 0:
 
-Outlook IMAP:
-outlook.office365.com
-""")
-
-else:
-
-    st.success(
-        f"Connected as {st.session_state.email_id}"
-    )
-
-    st.subheader("Quick Overview")
-
-    total_emails = len(
-        st.session_state.emails
-    )
-
-    senders = set()
-
-    for email in st.session_state.emails:
-        senders.add(
-            email.get("from", "")
+        st.info(
+            "No emails loaded yet."
         )
 
-    col1, col2 = st.columns(2)
+    else:
 
-    with col1:
+        recent_emails = []
 
-        st.metric(
-            "Total Emails",
-            total_emails
-        )
+        for email in emails[:10]:
 
-    with col2:
+            recent_emails.append(
+                {
+                    "Sender":
+                    email.get(
+                        "sender_name",
+                        ""
+                    ),
 
-        st.metric(
-            "Unique Senders",
-            len(senders)
-        )
+                    "Subject":
+                    email.get(
+                        "subject",
+                        ""
+                    ),
 
-    st.divider()
+                    "Date":
+                    email.get(
+                        "date",
+                        ""
+                    )
+                }
+            )
 
-    st.subheader("Recent Emails")
-
-    preview_data = []
-
-    for item in st.session_state.emails[:10]:
-
-        preview_data.append(
-            {
-                "From": item.get(
-                    "from",
-                    ""
-                ),
-                "Subject": item.get(
-                    "subject",
-                    ""
-                ),
-                "Date": item.get(
-                    "date",
-                    ""
-                )
-            }
-        )
-
-    if preview_data:
         st.dataframe(
-            preview_data,
+            pd.DataFrame(
+                recent_emails
+            ),
             use_container_width=True,
             hide_index=True
         )
 
-# ==========================================
-# Footer
-# ==========================================
+# =========================================================
+# RIGHT SIDE
+# =========================================================
+
+with right_col:
+
+    st.subheader(
+        "⚡ Quick Actions"
+    )
+
+    st.info(
+        """
+📥 Open Inbox
+
+📊 View Analytics
+
+⚙️ Configure Mailbox
+
+🤖 Generate AI Summary
+
+📱 Send WhatsApp Alerts
+"""
+    )
+
+    st.subheader(
+        "📈 System Status"
+    )
+
+    st.metric(
+        "Connection",
+        "Connected"
+        if st.session_state.connected
+        else "Disconnected"
+    )
+
+    st.metric(
+        "Loaded Emails",
+        len(emails)
+    )
+
+# =========================================================
+# EMAIL DOMAIN ANALYSIS
+# =========================================================
+
+if len(emails) > 0:
+
+    st.divider()
+
+    st.subheader(
+        "🌐 Top Domains"
+    )
+
+    domains = []
+
+    for email in emails:
+
+        sender_email = email.get(
+            "sender_email",
+            ""
+        )
+
+        if "@" in sender_email:
+
+            domain = (
+                sender_email
+                .split("@")[-1]
+                .replace(">", "")
+                .strip()
+            )
+
+            domains.append(
+                domain
+            )
+
+    if len(domains) > 0:
+
+        domain_df = (
+            pd.Series(domains)
+            .value_counts()
+            .head(10)
+            .reset_index()
+        )
+
+        domain_df.columns = [
+            "Domain",
+            "Emails"
+        ]
+
+        st.dataframe(
+            domain_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+# =========================================================
+# FOOTER
+# =========================================================
 
 st.divider()
 
 st.caption(
-    "Email Dashboard v1.0 | Streamlit + IMAP + Gemini + Twilio"
+    "MailMind v1.0 • AI Email Dashboard"
 )

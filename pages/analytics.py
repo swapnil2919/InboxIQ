@@ -1,37 +1,165 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
-st.title("📊 Email Analytics")
+from utils.parser import (
+    get_top_domains,
+    get_top_senders,
+    generate_stats
+)
 
-# ==========================================
-# Validation
-# ==========================================
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+
+st.set_page_config(
+    page_title="MailMind Analytics",
+    page_icon="📊",
+    layout="wide"
+)
+
+# =========================================================
+# CUSTOM CSS
+# =========================================================
+
+st.markdown("""
+<style>
+
+.metric-card{
+    padding:15px;
+    border-radius:12px;
+    border:1px solid #2d2d2d;
+    background:#111827;
+}
+
+.analytics-title{
+    font-size:18px;
+    font-weight:600;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# VALIDATION
+# =========================================================
 
 if (
     "emails" not in st.session_state
     or len(st.session_state.emails) == 0
 ):
-
     st.warning(
-        "No emails loaded. Please connect your mailbox first."
+        "No emails loaded. Please connect mailbox first."
     )
-
     st.stop()
 
 emails = st.session_state.emails
 
-# ==========================================
-# Create DataFrame
-# ==========================================
+# =========================================================
+# PAGE TITLE
+# =========================================================
+
+st.title("📊 MailMind Analytics")
+
+st.caption(
+    "Analyze inbox activity, senders, domains and engagement."
+)
+
+# =========================================================
+# STATS
+# =========================================================
+
+stats = generate_stats(
+    emails
+)
+
+total_emails = stats.get(
+    "total_emails",
+    0
+)
+
+unique_senders = stats.get(
+    "unique_senders",
+    0
+)
+
+attachments = stats.get(
+    "emails_with_attachments",
+    0
+)
+
+domains = len(
+    set(
+        [
+            email.get(
+                "sender_email",
+                ""
+            ).split("@")[-1]
+            for email in emails
+            if "@"
+            in email.get(
+                "sender_email",
+                ""
+            )
+        ]
+    )
+)
+
+# =========================================================
+# KPI ROW
+# =========================================================
+
+col1, col2, col3, col4 = st.columns(
+    4
+)
+
+with col1:
+
+    st.metric(
+        "📧 Total Emails",
+        total_emails
+    )
+
+with col2:
+
+    st.metric(
+        "👤 Unique Senders",
+        unique_senders
+    )
+
+with col3:
+
+    st.metric(
+        "📎 Attachments",
+        attachments
+    )
+
+with col4:
+
+    st.metric(
+        "🌐 Domains",
+        domains
+    )
+
+st.divider()
+
+# =========================================================
+# DATAFRAME
+# =========================================================
 
 records = []
 
 for email in emails:
 
     sender = email.get(
-        "from",
+        "sender_name",
         "Unknown"
+    )
+
+    sender_email = email.get(
+        "sender_email",
+        ""
     )
 
     subject = email.get(
@@ -39,99 +167,52 @@ for email in emails:
         ""
     )
 
-    date = email.get(
-        "date",
-        ""
-    )
-
     domain = "Unknown"
 
-    try:
+    if "@" in sender_email:
 
-        if "@" in sender:
-
-            domain = (
-                sender.split("@")[-1]
-                .replace(">", "")
-                .strip()
-            )
-
-    except Exception:
-        pass
+        domain = (
+            sender_email
+            .split("@")[-1]
+            .replace(">", "")
+            .strip()
+        )
 
     records.append(
         {
-            "sender": sender,
-            "subject": subject,
-            "date": date,
-            "domain": domain,
-            "subject_length": len(
-                subject
-            ),
+            "sender":
+            sender,
+
+            "sender_email":
+            sender_email,
+
+            "subject":
+            subject,
+
+            "domain":
+            domain,
+
+            "subject_length":
+            len(subject),
+
+            "has_attachment":
+            email.get(
+                "has_attachment",
+                False
+            )
         }
     )
 
-df = pd.DataFrame(records)
-
-# ==========================================
-# KPIs
-# ==========================================
-
-total_emails = len(df)
-
-unique_senders = (
-    df["sender"]
-    .nunique()
+df = pd.DataFrame(
+    records
 )
 
-unique_domains = (
-    df["domain"]
-    .nunique()
-)
-
-avg_subject_length = round(
-    df["subject_length"].mean(),
-    2
-)
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-
-    st.metric(
-        "Total Emails",
-        total_emails
-    )
-
-with col2:
-
-    st.metric(
-        "Unique Senders",
-        unique_senders
-    )
-
-with col3:
-
-    st.metric(
-        "Domains",
-        unique_domains
-    )
-
-with col4:
-
-    st.metric(
-        "Avg Subject Length",
-        avg_subject_length
-    )
-
-st.divider()
-
-# ==========================================
-# Top Senders
-# ==========================================
+# =========================================================
+# TOP SENDERS
+# =========================================================
 
 st.subheader(
-    "📨 Top Senders"
+    "👤 Top Senders"
 )
 
 sender_counts = (
@@ -142,65 +223,128 @@ sender_counts = (
 
 sender_counts.columns = [
     "Sender",
-    "Count"
+    "Emails"
 ]
 
-fig = px.bar(
+fig_sender = px.bar(
     sender_counts.head(10),
     x="Sender",
-    y="Count",
+    y="Emails",
+    text="Emails",
     title="Top 10 Senders"
 )
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-# ==========================================
-# Domain Analysis
-# ==========================================
-
-st.subheader(
-    "🌐 Email Domains"
-)
-
-domain_counts = (
-    df["domain"]
-    .value_counts()
-    .reset_index()
-)
-
-domain_counts.columns = [
-    "Domain",
-    "Count"
-]
-
-fig_domain = px.pie(
-    domain_counts.head(10),
-    values="Count",
-    names="Domain",
-    title="Top Domains"
+fig_sender.update_layout(
+    height=450
 )
 
 st.plotly_chart(
-    fig_domain,
+    fig_sender,
     use_container_width=True
 )
 
-# ==========================================
-# Subject Length Distribution
-# ==========================================
+# =========================================================
+# DOMAIN ANALYSIS
+# =========================================================
+
+col1, col2 = st.columns(
+    2
+)
+
+with col1:
+
+    st.subheader(
+        "🌐 Email Domains"
+    )
+
+    domain_counts = (
+        df["domain"]
+        .value_counts()
+        .reset_index()
+    )
+
+    domain_counts.columns = [
+        "Domain",
+        "Emails"
+    ]
+
+    fig_domain = px.pie(
+        domain_counts.head(10),
+        names="Domain",
+        values="Emails",
+        hole=0.4
+    )
+
+    st.plotly_chart(
+        fig_domain,
+        use_container_width=True
+    )
+
+with col2:
+
+    st.subheader(
+        "📎 Attachments"
+    )
+
+    attach_df = pd.DataFrame(
+        {
+            "Type":
+            [
+                "With Attachment",
+                "Without Attachment"
+            ],
+
+            "Count":
+            [
+                len(
+                    df[
+                        df[
+                            "has_attachment"
+                        ]
+                        == True
+                    ]
+                ),
+                len(
+                    df[
+                        df[
+                            "has_attachment"
+                        ]
+                        == False
+                    ]
+                )
+            ]
+        }
+    )
+
+    fig_attach = px.pie(
+        attach_df,
+        names="Type",
+        values="Count"
+    )
+
+    st.plotly_chart(
+        fig_attach,
+        use_container_width=True
+    )
+
+st.divider()
+
+# =========================================================
+# SUBJECT LENGTH
+# =========================================================
 
 st.subheader(
-    "📝 Subject Length Distribution"
+    "📝 Subject Length Analysis"
 )
 
 fig_subject = px.histogram(
     df,
     x="subject_length",
-    nbins=20,
-    title="Subject Length"
+    nbins=20
+)
+
+fig_subject.update_layout(
+    height=450
 )
 
 st.plotly_chart(
@@ -208,72 +352,115 @@ st.plotly_chart(
     use_container_width=True
 )
 
-# ==========================================
-# Sender Statistics Table
-# ==========================================
+st.divider()
+
+# =========================================================
+# TOP DOMAINS TABLE
+# =========================================================
 
 st.subheader(
-    "📋 Sender Statistics"
+    "🌐 Top Domains"
+)
+
+top_domains = get_top_domains(
+    emails
+)
+
+domain_df = pd.DataFrame(
+    top_domains,
+    columns=[
+        "Domain",
+        "Count"
+    ]
 )
 
 st.dataframe(
-    sender_counts,
+    domain_df,
     use_container_width=True
 )
 
-# ==========================================
-# Domain Statistics Table
-# ==========================================
+# =========================================================
+# TOP SENDERS TABLE
+# =========================================================
 
 st.subheader(
-    "📋 Domain Statistics"
+    "👤 Top Senders"
+)
+
+top_senders = get_top_senders(
+    emails
+)
+
+sender_df = pd.DataFrame(
+    top_senders,
+    columns=[
+        "Sender",
+        "Count"
+    ]
 )
 
 st.dataframe(
-    domain_counts,
+    sender_df,
     use_container_width=True
 )
 
-# ==========================================
-# Export Analytics
-# ==========================================
-
 st.divider()
 
-st.subheader(
-    "⬇ Export Analytics"
-)
-
-csv_data = sender_counts.to_csv(
-    index=False
-)
-
-st.download_button(
-    label="Download Sender Analytics CSV",
-    data=csv_data,
-    file_name="sender_analytics.csv",
-    mime="text/csv"
-)
-
-# ==========================================
-# Recent Emails Preview
-# ==========================================
-
-st.divider()
+# =========================================================
+# RECENT EMAILS
+# =========================================================
 
 st.subheader(
     "📧 Recent Emails"
 )
 
-preview_df = df[
+preview_df = pd.DataFrame(
     [
-        "sender",
-        "subject",
-        "domain"
+        {
+            "Sender":
+            email.get(
+                "sender_name",
+                ""
+            ),
+
+            "Subject":
+            email.get(
+                "subject",
+                ""
+            ),
+
+            "Attachment":
+            "Yes"
+            if email.get(
+                "has_attachment",
+                False
+            )
+            else "No"
+        }
+
+        for email in emails[:50]
     ]
-].head(20)
+)
 
 st.dataframe(
     preview_df,
+    use_container_width=True
+)
+
+# =========================================================
+# EXPORT ANALYTICS
+# =========================================================
+
+st.divider()
+
+csv_data = df.to_csv(
+    index=False
+)
+
+st.download_button(
+    label="⬇ Download Analytics CSV",
+    data=csv_data,
+    file_name="mailmind_analytics.csv",
+    mime="text/csv",
     use_container_width=True
 )

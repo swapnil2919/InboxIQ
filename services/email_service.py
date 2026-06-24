@@ -19,7 +19,7 @@ class EmailService:
         self.mail = None
 
     # =====================================
-    # Connection
+    # CONNECT
     # =====================================
 
     def connect(self):
@@ -44,8 +44,12 @@ class EmailService:
         except Exception as e:
 
             raise Exception(
-                f"Failed to connect: {str(e)}"
+                f"Connection Failed: {str(e)}"
             )
+
+    # =====================================
+    # DISCONNECT
+    # =====================================
 
     def disconnect(self):
 
@@ -54,35 +58,33 @@ class EmailService:
             if self.mail:
                 self.mail.logout()
 
-        except Exception:
+        except:
             pass
 
     # =====================================
-    # Decoder
+    # DECODE EMAIL TEXT
     # =====================================
 
     @staticmethod
-    def decode_text(value):
+    def decode_text(text):
 
-        if not value:
+        if not text:
             return ""
 
-        decoded_parts = decode_header(
-            value
-        )
+        decoded = decode_header(text)
 
         result = ""
 
-        for text, encoding in decoded_parts:
+        for value, encoding in decoded:
 
             try:
 
                 if isinstance(
-                    text,
+                    value,
                     bytes
                 ):
 
-                    result += text.decode(
+                    result += value.decode(
                         encoding
                         if encoding
                         else "utf-8",
@@ -91,28 +93,27 @@ class EmailService:
 
                 else:
 
-                    result += str(text)
+                    result += value
 
-            except Exception:
+            except:
 
-                result += str(text)
+                result += str(value)
 
         return result
 
     # =====================================
-    # Body Parser
+    # EXTRACT BODY
     # =====================================
 
     @staticmethod
     def extract_body(msg):
 
-        body = ""
+        plain_text = ""
+        html_body = ""
 
         try:
 
             if msg.is_multipart():
-
-                html_body = ""
 
                 for part in msg.walk():
 
@@ -132,47 +133,51 @@ class EmailService:
                     ):
                         continue
 
+                    # ------------------
+                    # TEXT
+                    # ------------------
+
                     if (
                         content_type
                         == "text/plain"
                     ):
 
-                        body = (
-                            part.get_payload(
-                                decode=True
+                        try:
+
+                            plain_text = (
+                                part.get_payload(
+                                    decode=True
+                                )
+                                .decode(
+                                    errors="ignore"
+                                )
                             )
-                            .decode(
-                                errors="ignore"
-                            )
-                        )
+
+                        except:
+                            pass
+
+                    # ------------------
+                    # HTML
+                    # ------------------
 
                     elif (
                         content_type
                         == "text/html"
                     ):
 
-                        html_body = (
-                            part.get_payload(
-                                decode=True
+                        try:
+
+                            html_body = (
+                                part.get_payload(
+                                    decode=True
+                                )
+                                .decode(
+                                    errors="ignore"
+                                )
                             )
-                            .decode(
-                                errors="ignore"
-                            )
-                        )
 
-                if (
-                    not body
-                    and html_body
-                ):
-
-                    soup = BeautifulSoup(
-                        html_body,
-                        "html.parser"
-                    )
-
-                    body = soup.get_text(
-                        separator="\n"
-                    )
+                        except:
+                            pass
 
             else:
 
@@ -184,18 +189,44 @@ class EmailService:
 
                 if payload:
 
-                    body = payload.decode(
-                        errors="ignore"
+                    plain_text = (
+                        payload.decode(
+                            errors="ignore"
+                        )
                     )
 
-        except Exception:
-
+        except:
             pass
 
-        return body
+        # Fallback:
+        # create text from html
+
+        if (
+            not plain_text
+            and html_body
+        ):
+
+            soup = BeautifulSoup(
+                html_body,
+                "html.parser"
+            )
+
+            plain_text = (
+                soup.get_text(
+                    separator="\n"
+                )
+            )
+
+        return {
+            "plain_text":
+            plain_text,
+
+            "html_body":
+            html_body
+        }
 
     # =====================================
-    # Attachment Detection
+    # ATTACHMENTS
     # =====================================
 
     @staticmethod
@@ -217,13 +248,13 @@ class EmailService:
                         filename
                     )
 
-        except Exception:
+        except:
             pass
 
         return attachments
 
     # =====================================
-    # Single Email Parser
+    # PARSE EMAIL
     # =====================================
 
     def parse_email(
@@ -231,107 +262,158 @@ class EmailService:
         msg
     ):
 
+        subject = (
+            self.decode_text(
+                msg.get(
+                    "Subject",
+                    ""
+                )
+            )
+        )
+
+        sender = (
+            self.decode_text(
+                msg.get(
+                    "From",
+                    ""
+                )
+            )
+        )
+
+        receiver = (
+            self.decode_text(
+                msg.get(
+                    "To",
+                    ""
+                )
+            )
+        )
+
+        date = msg.get(
+            "Date",
+            ""
+        )
+
         try:
 
-            subject = (
-                self.decode_text(
-                    msg.get(
-                        "Subject",
-                        ""
-                    )
+            date = str(
+                parsedate_to_datetime(
+                    date
                 )
             )
 
-            sender = (
-                self.decode_text(
-                    msg.get(
-                        "From",
-                        ""
-                    )
-                )
+        except:
+            pass
+
+        body_data = (
+            self.extract_body(
+                msg
             )
+        )
 
-            receiver = (
-                self.decode_text(
-                    msg.get(
-                        "To",
-                        ""
-                    )
-                )
+        plain_text = (
+            body_data[
+                "plain_text"
+            ]
+        )
+
+        html_body = (
+            body_data[
+                "html_body"
+            ]
+        )
+
+        attachments = (
+            self.get_attachments(
+                msg
             )
+        )
 
-            date = msg.get(
-                "Date",
-                ""
-            )
+        sender_name = sender
 
-            try:
+        try:
 
-                parsed_date = (
-                    parsedate_to_datetime(
-                        date
-                    )
+            if "<" in sender:
+
+                sender_name = (
+                    sender.split(
+                        "<"
+                    )[0]
+                    .strip()
                 )
 
-                date = str(
-                    parsed_date
+        except:
+            pass
+
+        preview = (
+            plain_text[:150]
+            + "..."
+            if len(
+                plain_text
+            ) > 150
+            else plain_text
+        )
+
+        return {
+
+            "id":
+            str(
+                hash(
+                    subject
+                    + sender
+                    + date
                 )
+            ),
 
-            except Exception:
-                pass
+            "subject":
+            subject,
 
-            body = (
-                self.extract_body(
-                    msg
-                )
-            )
+            "sender_name":
+            sender_name,
 
-            attachments = (
-                self.get_attachments(
-                    msg
-                )
-            )
+            "sender_email":
+            sender,
 
-            return {
-                "subject": subject,
-                "from": sender,
-                "to": receiver,
-                "date": date,
-                "body": body,
-                "attachments": attachments,
-                "has_attachment": len(
-                    attachments
-                )
-                > 0,
-            }
+            "to":
+            receiver,
 
-        except Exception as e:
+            "date":
+            date,
 
-            return {
-                "subject": "",
-                "from": "",
-                "to": "",
-                "date": "",
-                "body": "",
-                "attachments": [],
-                "has_attachment": False,
-                "error": str(e),
-            }
+            # Plain text version
+            "body":
+            plain_text,
+
+            # Original html version
+            "body_html":
+            html_body,
+
+            "preview":
+            preview,
+
+            "attachments":
+            attachments,
+
+            "has_attachment":
+            len(
+                attachments
+            ) > 0,
+
+            "category":
+            "Inbox",
+
+            "is_read":
+            False
+        }
 
     # =====================================
-    # Fetch Emails
+    # FETCH EMAILS
     # =====================================
 
     def fetch_emails(
         self,
         limit=100
     ):
-
-        if not self.mail:
-
-            raise Exception(
-                "Not connected."
-            )
 
         emails = []
 
@@ -342,11 +424,12 @@ class EmailService:
             )
         )
 
-        if status != "OK":
+        if (
+            status
+            != "OK"
+        ):
 
-            raise Exception(
-                "Unable to fetch emails."
-            )
+            return emails
 
         email_ids = (
             messages[0]
@@ -363,7 +446,7 @@ class EmailService:
 
             try:
 
-                status, data = (
+                status, msg_data = (
                     self.mail.fetch(
                         email_id,
                         "(RFC822)"
@@ -376,7 +459,7 @@ class EmailService:
                 ):
                     continue
 
-                for response in data:
+                for response in msg_data:
 
                     if isinstance(
                         response,
@@ -389,23 +472,23 @@ class EmailService:
                             )
                         )
 
-                        parsed_email = (
+                        parsed = (
                             self.parse_email(
                                 msg
                             )
                         )
 
                         emails.append(
-                            parsed_email
+                            parsed
                         )
 
-            except Exception:
+            except:
                 continue
 
         return emails
 
     # =====================================
-    # Fetch Unread
+    # FETCH UNREAD
     # =====================================
 
     def fetch_unread(
@@ -422,9 +505,12 @@ class EmailService:
             )
         )
 
-        if status != "OK":
+        if (
+            status
+            != "OK"
+        ):
 
-            return []
+            return emails
 
         email_ids = (
             messages[0]
@@ -439,30 +525,41 @@ class EmailService:
             email_ids
         ):
 
-            status, data = (
-                self.mail.fetch(
-                    email_id,
-                    "(RFC822)"
+            try:
+
+                status, msg_data = (
+                    self.mail.fetch(
+                        email_id,
+                        "(RFC822)"
+                    )
                 )
-            )
 
-            for response in data:
-
-                if isinstance(
-                    response,
-                    tuple
+                if (
+                    status
+                    != "OK"
                 ):
+                    continue
 
-                    msg = (
-                        email.message_from_bytes(
-                            response[1]
-                        )
-                    )
+                for response in msg_data:
 
-                    emails.append(
-                        self.parse_email(
-                            msg
+                    if isinstance(
+                        response,
+                        tuple
+                    ):
+
+                        msg = (
+                            email.message_from_bytes(
+                                response[1]
+                            )
                         )
-                    )
+
+                        emails.append(
+                            self.parse_email(
+                                msg
+                            )
+                        )
+
+            except:
+                continue
 
         return emails
