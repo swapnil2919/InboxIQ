@@ -25,9 +25,14 @@ def search_emails(
             ""
         ).lower()
 
-        sender = email.get(
-            "from",
-            ""
+        # Emails expose sender via sender_name / sender_email
+        # (older records may still use "from").
+        sender = (
+            email.get("sender_name", "")
+            + " "
+            + email.get("sender_email", "")
+            + " "
+            + email.get("from", "")
         ).lower()
 
         body = email.get(

@@ -75,3 +75,6 @@ temp/
  
 # Claude Code
 .claude/
+
+# InboxIQ local credential store
+.InboxIQ_credentials.json

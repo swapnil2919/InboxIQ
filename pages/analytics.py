@@ -14,7 +14,7 @@ from utils.parser import (
 # =========================================================
 
 st.set_page_config(
-    page_title="MailMind Analytics",
+    page_title="InboxIQ Analytics",
     page_icon="📊",
     layout="wide"
 )
@@ -60,7 +60,7 @@ emails = st.session_state.emails
 # PAGE TITLE
 # =========================================================
 
-st.title("📊 MailMind Analytics")
+st.title("📊 InboxIQ Analytics")
 
 st.caption(
     "Analyze inbox activity, senders, domains and engagement."
@@ -460,7 +460,7 @@ csv_data = df.to_csv(
 st.download_button(
     label="⬇ Download Analytics CSV",
     data=csv_data,
-    file_name="mailmind_analytics.csv",
+    file_name="inboxiq_analytics.csv",
     mime="text/csv",
     use_container_width=True
 )
